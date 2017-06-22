@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Optional;
@@ -96,7 +97,8 @@ public class AddressBook {
 	// parameter
 	private static final String PERSON_DATA_PREFIX_PHONE = "p/";
 	private static final String PERSON_DATA_PREFIX_EMAIL = "e/";
-
+	//private static final String PERSON_DATA_PREFIX_NEWNAME = "n/";
+	
 	private static final String PERSON_STRING_REPRESENTATION = "%1$s " // name
 			+ PERSON_DATA_PREFIX_PHONE + "%2$s " // phone
 			+ PERSON_DATA_PREFIX_EMAIL + "%3$s"; // email
@@ -133,6 +135,21 @@ public class AddressBook {
 	private static final String COMMAND_EXIT_WORD = "exit";
 	private static final String COMMAND_EXIT_DESC = "Exits the program.";
 	private static final String COMMAND_EXIT_EXAMPLE = COMMAND_EXIT_WORD;
+	
+	private static final String COMMAND_SORT_WORD = "sort";
+	private static final String COMMAND_SORT_DESC = "Alphabetically sorts the addressbook.";
+	private static final String COMMAND_SORT_EXAMPLE = COMMAND_SORT_WORD;
+
+	private static final String COMMAND_EDIT_WORD = "edit";
+	private static final String COMMAND_EDIT_DESC = "Edits the information of a person identified by the index number used in "
+			+ "the last find/list call. The parameters to edit should be specified along with the new information.";
+	private static final String COMMAND_EDIT_PARAMETER = "INDEX NAME (OPTIONAL) " + 
+			PERSON_DATA_PREFIX_PHONE + "PHONE (OPTIONAL) " + PERSON_DATA_PREFIX_EMAIL
+			+"EMAIL (OPTIONAL)";
+	private static final String COMMAND_EDIT_EXAMPLE = COMMAND_EDIT_WORD + " 1 "+ PERSON_DATA_PREFIX_PHONE 
+			+"12345678 "+PERSON_DATA_PREFIX_EMAIL + "newemail@email.com";
+	
+	private static enum WhichDataPresent {NAME, PHONE, EMAIL, NAME_AND_PHONE, NAME_AND_EMAIL, PHONE_AND_EMAIL, ALL, NONE}; 
 
 	private static final String DIVIDER = "===================================================";
 
@@ -200,10 +217,17 @@ public class AddressBook {
 	 */
 	private static ArrayList<HashMap<PersonProperty, String>> latestPersonListingView = getAllPersonsInAddressBook(); // initial
 																														// view
-																														// is
-																														// of
-																														// all
-
+	/**
+		Comparator to compare names for sort																												// of
+	*/																													// all
+	private static class NameComparator implements Comparator<HashMap<PersonProperty,String>> {
+		@Override
+		public int compare( HashMap<PersonProperty,String> p1, HashMap<PersonProperty,String> p2){
+				String name1 = getNameFromPerson(p1);
+				String name2 = getNameFromPerson(p2);
+				return name1.compareToIgnoreCase(name2);
+		}
+	}
 	/**
 	 * The path to the file used for storing person data.
 	 */
@@ -398,11 +422,164 @@ public class AddressBook {
 			return getUsageInfoForAllCommands();
 		case COMMAND_EXIT_WORD:
 			executeExitProgramRequest();
+		case COMMAND_SORT_WORD:
+			return executeSortList();
+		case COMMAND_EDIT_WORD:
+			return executeEditPerson(commandArgs);
 		default:
 			return getMessageForInvalidCommandInput(commandType, getUsageInfoForAllCommands());
 		}
 	}
 
+	private static String executeEditPerson(String commandArgs) {
+		if(isValidEditCall(commandArgs)){
+			int index = getIndexFromCommandArgs(commandArgs) - 1;
+			HashMap<PersonProperty,String> currentPersonData = ALL_PERSONS.get(index);
+			ALL_PERSONS.set(index, mergeEdit(currentPersonData, getNewDataFromCommandArgs(commandArgs)));
+			return getSuccessfulEditCallMessage();
+		}
+		return getInvalidEditCallMessage();
+	}
+	
+	private static HashMap<PersonProperty,String> mergeEdit(HashMap<PersonProperty,String> originalInfo, 
+			HashMap<PersonProperty,String> edits){
+		HashMap<PersonProperty,String> newInfoComplete = new HashMap<>();
+		if(edits.get(PersonProperty.NAME)!=null)
+			newInfoComplete.put(PersonProperty.NAME, edits.get(PersonProperty.NAME));
+		else
+			newInfoComplete.put(PersonProperty.NAME, originalInfo.get(PersonProperty.NAME));
+		if(edits.get(PersonProperty.PHONE)!= null)
+			newInfoComplete.put(PersonProperty.PHONE, edits.get(PersonProperty.PHONE));
+		else
+			newInfoComplete.put(PersonProperty.PHONE, originalInfo.get(PersonProperty.PHONE));
+		if(edits.get(PersonProperty.EMAIL)!=null)
+			newInfoComplete.put(PersonProperty.EMAIL, edits.get(PersonProperty.EMAIL));
+		else
+			newInfoComplete.put(PersonProperty.EMAIL, originalInfo.get(PersonProperty.EMAIL));
+		return newInfoComplete;
+	}
+	private static String getSuccessfulEditCallMessage() {
+		return LINE_PREFIX + "Edit successful!";
+	}
+	private static String getInvalidEditCallMessage() {
+		return LINE_PREFIX + "Invalid edit command type help to find example";
+	}
+
+	private static Boolean isValidEditCall(String commandArgs){
+		int index = getIndexFromCommandArgs(commandArgs);
+		return index>0 && index<ALL_PERSONS.size() && whatIsPresent(commandArgs)!= WhichDataPresent.NONE;
+		}
+	private static String removeIndex(String commandArgs){
+		return commandArgs.split("\\s", 2)[1];
+	}
+	
+	private static HashMap<PersonProperty,String> getNewDataFromCommandArgs(String commandArgs){
+		HashMap<PersonProperty,String> newData = new HashMap<>();
+		String commandArgsWithoutIndex = removeIndex(commandArgs);
+		switch(whatIsPresent(commandArgs)){
+		case ALL:
+			 newData.put(PersonProperty.NAME,extractNameFromPersonString(commandArgsWithoutIndex));
+			 newData.put(PersonProperty.PHONE,extractPhoneFromPersonString(commandArgsWithoutIndex));
+			 newData.put(PersonProperty.EMAIL,extractEmailFromPersonString(commandArgsWithoutIndex));
+			 return newData;
+		case NAME_AND_PHONE:
+			 newData.put(PersonProperty.NAME,extractNameFromPersonString(commandArgsWithoutIndex));
+			 newData.put(PersonProperty.PHONE,extractPhoneFromPersonString(commandArgsWithoutIndex));
+			 return newData;
+		case NAME_AND_EMAIL:
+			 newData.put(PersonProperty.NAME,extractNameFromPersonString(commandArgsWithoutIndex));
+			 newData.put(PersonProperty.EMAIL,extractEmailFromPersonString(commandArgsWithoutIndex));
+			 return newData;
+		case PHONE_AND_EMAIL:
+			 newData.put(PersonProperty.PHONE,extractPhoneFromPersonString(commandArgsWithoutIndex));
+			 newData.put(PersonProperty.EMAIL,extractEmailFromPersonString(commandArgsWithoutIndex));
+			 return newData;
+		case NAME:
+			 newData.put(PersonProperty.NAME,extractNameFromPersonString(commandArgsWithoutIndex));
+			 return newData;
+		case PHONE:
+			 newData.put(PersonProperty.PHONE,extractPhoneFromPersonString(commandArgsWithoutIndex));
+			 return newData;
+		case EMAIL:
+			 newData.put(PersonProperty.EMAIL,extractEmailFromPersonString(commandArgsWithoutIndex));
+			 return newData;
+		default:
+			return null;
+			
+		}
+	}
+	
+	private static Boolean containsAll(String commandArgs,String... args) {
+		for(String m: args){
+			if(!commandArgs.contains(m))
+				return false;
+		}
+		return true;
+	}
+	private static Boolean containsName(String commandArgs) {
+		//int argNum=0;
+		String splitRegex = PERSON_DATA_PREFIX_PHONE + "|" + PERSON_DATA_PREFIX_EMAIL;
+		/*for(String m: args){
+			argNum++;
+			if(argNum==1)
+				splitRegex = m;
+			else
+				splitRegex += '|' + m;
+		}
+		if(argNum>0){
+			String[] splitArgs = commandArgs.split(splitRegex);
+			return splitArgs.length > argNum && splitArgs[0].trim().length() > 1;
+		}*/
+		String[] splitArgs = commandArgs.split(splitRegex);
+		return 	splitArgs[0].trim().length() > 1;
+		
+	}
+	private static WhichDataPresent whatIsPresent(String commandArgs) {
+		Boolean hasName = containsName(commandArgs); 
+		if(containsAll(commandArgs,PERSON_DATA_PREFIX_PHONE,PERSON_DATA_PREFIX_EMAIL) 
+				&& hasName)
+			return WhichDataPresent.ALL;
+		else if(containsAll(commandArgs,PERSON_DATA_PREFIX_PHONE)
+				&& hasName)
+			return WhichDataPresent.NAME_AND_PHONE;
+		else if(containsAll(commandArgs,PERSON_DATA_PREFIX_EMAIL)
+				&& hasName)
+			return WhichDataPresent.NAME_AND_EMAIL;
+		else if(containsAll(commandArgs,PERSON_DATA_PREFIX_PHONE,PERSON_DATA_PREFIX_EMAIL))
+			return WhichDataPresent.PHONE_AND_EMAIL;
+		else if(hasName)
+			return WhichDataPresent.NAME;
+		else if(commandArgs.contains(PERSON_DATA_PREFIX_PHONE))
+			return WhichDataPresent.PHONE;
+		else if(commandArgs.contains(PERSON_DATA_PREFIX_EMAIL))
+			return WhichDataPresent.EMAIL;
+		else
+			return WhichDataPresent.NONE;
+	}
+
+	private static int getIndexFromCommandArgs(String commandArgs) {
+		int index = Integer.parseInt((commandArgs.split("\\s",2))[0]);
+		return index;
+	}
+	private static String executeSortList() {
+		if(canSort()){
+			return getInvalidSortMessage();
+		}
+		ALL_PERSONS.sort(new NameComparator());
+		return getSuccessfulSortMessage();
+	}
+
+	private static String getSuccessfulSortMessage() {
+		return LINE_PREFIX + "Sorted!";
+	}
+
+	private static String getInvalidSortMessage() {
+		return LINE_PREFIX + "There are too few entries to sort.";
+	}
+
+	private static boolean canSort() {
+		return ALL_PERSONS.size()<2;
+	}
 	/**
 	 * Splits raw user input into command word and command arguments string
 	 *
@@ -506,7 +683,7 @@ public class AddressBook {
 	 * @return set of keywords as specified by args
 	 */
 	private static Set<String> extractKeywordsFromFindPersonArgs(String findPersonCommandArgs) {
-		return new HashSet<>(splitByWhitespace(findPersonCommandArgs.trim()));
+		return new HashSet<>(splitByWhitespace(findPersonCommandArgs.toLowerCase().trim()));
 	}
 
 	/**
@@ -522,7 +699,7 @@ public class AddressBook {
 			Collection<String> keywords) {
 		final ArrayList<HashMap<PersonProperty, String>> matchedPersons = new ArrayList<>();
 		for (HashMap<PersonProperty, String> person : getAllPersonsInAddressBook()) {
-			final Set<String> wordsInName = new HashSet<>(splitByWhitespace(getNameFromPerson(person)));
+			final Set<String> wordsInName = new HashSet<>(splitByWhitespace(getNameFromPerson(person).toLowerCase()));
 			if (!Collections.disjoint(wordsInName, keywords)) {
 				matchedPersons.add(person);
 			}
@@ -766,9 +943,7 @@ public class AddressBook {
 		if (storageFile.exists()) {
 			return;
 		}
-
 		showToUser(String.format(MESSAGE_ERROR_MISSING_STORAGE_FILE, filePath));
-
 		try {
 			storageFile.createNewFile();
 			showToUser(String.format(MESSAGE_STORAGE_FILE_CREATED, filePath));
@@ -1050,11 +1225,20 @@ public class AddressBook {
 	private static String extractNameFromPersonString(String encoded) {
 		final int indexOfPhonePrefix = encoded.indexOf(PERSON_DATA_PREFIX_PHONE);
 		final int indexOfEmailPrefix = encoded.indexOf(PERSON_DATA_PREFIX_EMAIL);
+		int indexOfFirstPrefix;
 		// name is leading substring up to first data prefix symbol
-		int indexOfFirstPrefix = Math.min(indexOfEmailPrefix, indexOfPhonePrefix);
+		if(indexOfPhonePrefix == -1 && indexOfEmailPrefix == -1)
+			return encoded.trim();
+		else if(indexOfPhonePrefix == -1)
+			indexOfFirstPrefix = indexOfEmailPrefix;
+		else if(indexOfEmailPrefix == -1)
+			indexOfFirstPrefix = indexOfPhonePrefix;
+		else
+			indexOfFirstPrefix = Math.min(indexOfEmailPrefix, indexOfPhonePrefix);
+		
 		return encoded.substring(0, indexOfFirstPrefix).trim();
 	}
-
+	
 	/**
 	 * Extracts substring representing phone number from person string
 	 * representation
@@ -1089,7 +1273,7 @@ public class AddressBook {
 	private static String extractEmailFromPersonString(String encoded) {
 		final int indexOfPhonePrefix = encoded.indexOf(PERSON_DATA_PREFIX_PHONE);
 		final int indexOfEmailPrefix = encoded.indexOf(PERSON_DATA_PREFIX_EMAIL);
-
+		
 		// email is last arg, target is from prefix to end of string
 		if (indexOfEmailPrefix > indexOfPhonePrefix) {
 			return removePrefixSign(encoded.substring(indexOfEmailPrefix, encoded.length()).trim(),
@@ -1166,7 +1350,8 @@ public class AddressBook {
 	private static String getUsageInfoForAllCommands() {
 		return getUsageInfoForAddCommand() + LS + getUsageInfoForFindCommand() + LS + getUsageInfoForViewCommand() + LS
 				+ getUsageInfoForDeleteCommand() + LS + getUsageInfoForClearCommand() + LS
-				+ getUsageInfoForExitCommand() + LS + getUsageInfoForHelpCommand();
+				+ getUsageInfoForExitCommand() + LS +getUsageInfoForSortCommand() + LS +
+				getUsageInfoForEditCommand() + LS + getUsageInfoForHelpCommand();
 	}
 
 	/** Returns the string for showing 'add' command usage instruction */
@@ -1213,7 +1398,17 @@ public class AddressBook {
 		return String.format(MESSAGE_COMMAND_HELP, COMMAND_EXIT_WORD, COMMAND_EXIT_DESC)
 				+ String.format(MESSAGE_COMMAND_HELP_EXAMPLE, COMMAND_EXIT_EXAMPLE);
 	}
-
+	/** Returns the string for showing 'sort' command usage instruction */
+	private static String getUsageInfoForSortCommand() {
+		return String.format(MESSAGE_COMMAND_HELP, COMMAND_SORT_WORD, COMMAND_SORT_DESC)
+				+ String.format(MESSAGE_COMMAND_HELP_EXAMPLE, COMMAND_SORT_EXAMPLE);
+	}
+	/** Returns the string for showing 'edit' command usage instruction */
+	private static String getUsageInfoForEditCommand() {
+		return String.format(MESSAGE_COMMAND_HELP, COMMAND_EDIT_WORD, COMMAND_EDIT_DESC)
+				+ String.format(MESSAGE_COMMAND_HELP_PARAMETERS, COMMAND_EDIT_PARAMETER) + LS
+				+ String.format(MESSAGE_COMMAND_HELP_EXAMPLE, COMMAND_EDIT_EXAMPLE);
+	}
 	/*
 	 * ============================ UTILITY METHODS ============================
 	 */
